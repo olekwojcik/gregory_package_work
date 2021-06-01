@@ -1,0 +1,32 @@
+---
+title: "work"
+output: pdf_document
+---
+
+```{r}
+library(mase)
+library(pdxTrees)
+library(tidyverse)
+dat <- get_pdxTrees_parks() %>%
+  as.data.frame() %>%
+  drop_na(DBH, Crown_Width_NS, Tree_Height)
+dat_s <- dat %>%
+  sample_n(1000) %>%
+  as.data.frame()
+names(dat_s)
+est <- greg(y = dat_s$Tree_Height, x_sample =  dat_s[ c("Crown_Width_NS", "DBH", "Condition")],
+            x_pop = dat[ c("Crown_Width_NS", "DBH", "Condition")], var_est = TRUE,
+            data_type = "raw")
+est$pop_mean
+est$pop_mean_var
+dat_x_means <- get_pdxTrees_parks() %>%
+  as.data.frame() %>%
+  drop_na(DBH, Crown_Width_NS, Tree_Height) %>%
+  summarize(DBH = mean(DBH), Crown_Width_NS = mean(Crown_Width_NS), 
+            Tree_Height = mean(Tree_Height))
+est <- greg(y = dat_s$Tree_Height, x_sample =  dat_s[ c("Crown_Width_NS", "DBH")],
+            x_pop = dat_x_means, var_est = TRUE,
+            data_type = "means", N = 25271)
+est
+```
+
