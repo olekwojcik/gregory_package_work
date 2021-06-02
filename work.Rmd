@@ -3,30 +3,221 @@ title: "work"
 output: pdf_document
 ---
 
+
 ```{r}
+#load libraries and set seed
 library(mase)
 library(pdxTrees)
 library(tidyverse)
+
+set.seed(13)
+```
+
+```{r}
+#load and wrangle data
 dat <- get_pdxTrees_parks() %>%
   as.data.frame() %>%
-  drop_na(DBH, Crown_Width_NS, Tree_Height)
+  drop_na(DBH, Crown_Width_NS, Tree_Height) %>%
+  filter(Condition != "Dead") %>%
+  select(UserID, Tree_Height, Crown_Width_NS, DBH, Condition)
+
+
 dat_s <- dat %>%
   sample_n(1000) %>%
   as.data.frame()
-names(dat_s)
-est <- greg(y = dat_s$Tree_Height, x_sample =  dat_s[ c("Crown_Width_NS", "DBH", "Condition")],
-            x_pop = dat[ c("Crown_Width_NS", "DBH", "Condition")], var_est = TRUE,
+
+dat <- dat %>%
+  select(-Tree_Height)
+
+dat_est <- dat %>%
+  sample_n(10000)
+```
+
+
+```{r}
+#mase
+
+est <- greg(y = dat_s$Tree_Height, x_sample =  dat_s[c("Crown_Width_NS", "DBH", "Condition")],
+            x_pop = dat[c("Crown_Width_NS", "DBH", "Condition")],
             data_type = "raw")
+
 est$pop_mean
+
 est$pop_mean_var
+
 dat_x_means <- get_pdxTrees_parks() %>%
   as.data.frame() %>%
   drop_na(DBH, Crown_Width_NS, Tree_Height) %>%
-  summarize(DBH = mean(DBH), Crown_Width_NS = mean(Crown_Width_NS), 
+  dplyr::summarize(DBH = mean(DBH), Crown_Width_NS = mean(Crown_Width_NS), 
             Tree_Height = mean(Tree_Height))
+
+
 est <- greg(y = dat_s$Tree_Height, x_sample =  dat_s[ c("Crown_Width_NS", "DBH")],
             x_pop = dat_x_means, var_est = TRUE,
             data_type = "means", N = 25271)
-est
+#est
 ```
 
+
+
+```{r}
+y_bar_function <- function(y, x_sample){
+  result_df <- x_sample %>%
+    dplyr::select(.data[[y]]) %>%
+    summarize(y_bar = mean(.data[[y]]))
+  
+  return(result_df$y_bar[[1]])
+}
+
+gregory_raw <- function(y, x_sample, x_pop, x_est, resolution, data_type = "raw",
+                        prop = NA){
+  
+  predictors <- names(x_pop)[!(names(x_pop) %in% resolution)]
+  
+  #y bar
+  
+  y_bar <- y_bar_function(y = y,
+                          x_sample = x_sample)
+  
+  #check what resolutions are in estimation unit of interest
+  #p represents set of resolutions
+    p <- unique(x_est[resolution])
+    p <- p[[1]]
+    
+    #filter our plot data to only have data with resolutions of interest
+    x_sample <- x_sample %>%
+      dplyr::filter(.data[[resolution]] %in% p)
+    
+    #filter out pixel data to only have data with resolutions of interest
+    
+    x_pop <- x_pop %>%
+      dplyr::filter(.data[[resolution]] %in% p)
+    
+     x_bar_n <- x_sample %>%
+        dplyr::group_by(.data[[resolution]]) %>%
+        dplyr::summarize(dplyr::across(predictors,
+                                mean)) %>%
+        dplyr::mutate("(Intercept)" = 1) %>%
+        tidyr::pivot_longer(!.data[[resolution]],
+                            names_to = "variable",
+                            values_to = "mean") %>%
+        dplyr::mutate(term = "n")
+      
+      print(x_bar_n)
+    
+    if(data_type == "raw"){
+      #because data is raw, we can know the proportion w_l
+      w_l <- x_est %>%
+        dplyr::group_by(.data[[resolution]]) %>%
+        dplyr::summarize(count = n()) %>%
+        dplyr::mutate(prop = count / nrow(x_est)) %>%
+        dplyr::select(-count)
+      
+      print(w_l)
+      
+      #get x_l
+
+      x_bar_N <- x_pop %>%
+        dplyr::group_by(.data[[resolution]]) %>%
+        dplyr::summarize(dplyr::across(predictors,
+                                mean)) %>%
+        dplyr::mutate("(Intercept)" = 1) %>%
+        tidyr::pivot_longer(!.data[[resolution]],
+                            names_to = "variable",
+                            values_to = "mean") %>%
+        dplyr::mutate(term = "N")
+      
+      
+      print(x_bar_N)
+    }
+    
+    if(data_type == "means"){
+      
+      w_l = props
+      
+      x_bar_N = x_pop %>%
+        mutate(term = "N")
+    }
+    
+    
+    #get betas
+    
+    
+    
+    #iterate over p
+    betas <- p %>%
+      purrr::map_dfr(.f = function(.){
+        
+        #this is to avoid weird bug
+        period_two <- .
+        
+        x_sample_filtered <- x_sample %>%
+          dplyr::filter(.data[[resolution]] == period_two)
+        
+        model <- lm(as.formula(c(paste(y, "~"),
+                        paste(predictors, collapse = " + "))),
+           data = x_sample_filtered)
+        
+        result <- data.frame(resolution = .,
+                             variable = names(model$coefficients),
+                             beta = unname(model$coefficients))
+        
+        names(result)[[1]] <- resolution
+        
+        return(result)
+        
+      }) #%>%
+      #dplyr::filter(variable != "(Intercept)")
+    
+    print(betas)
+    
+    #join n/N with betas
+    
+    little_n_df <- dplyr::left_join(x_bar_n, betas,
+                             by = c(resolution, "variable")) %>%
+      group_by(.data[[resolution]]) %>%
+      dplyr::summarize(little_n_sum = sum(mean * beta))
+    
+    big_N_df <- dplyr::left_join(x_bar_N, betas,
+                             by = c(resolution, "variable")) %>%
+      group_by(.data[[resolution]]) %>%
+      dplyr::summarize(big_N_sum = sum(mean * beta))
+    
+    final_df <- dplyr::left_join(little_n_df, big_N_df, by = resolution) %>%
+      dplyr::left_join(w_l) %>%
+      dplyr::mutate(almost_final_sum = prop * (-little_n_sum + big_N_sum)) %>%
+      dplyr::summarize(result = sum(almost_final_sum))
+    
+    result = y_bar + final_df$result[[1]]
+    
+    print(result)
+    print(y_bar)
+    
+    #iterate over resolution units
+    
+    mean_estimate <- p %>%
+      map(.f = function(.){
+        
+      })
+    
+ 
+                    }
+
+gregory <- function(y, x_sample, x_pop, x_est, resolution,
+                    data_type = "raw"){
+  
+  
+  
+  if(data_type == "raw"){
+    gregory_raw(y = y, x_sample = x_sample, x_pop = x_pop,
+                x_est = x_est, resolution = resolution)
+  }
+  
+}
+
+gregory(y = "Tree_Height", x_sample =  dat_s[c("Tree_Height", "Crown_Width_NS", "DBH", "Condition")],
+        x_pop = dat[c("Crown_Width_NS", "DBH", "Condition")],
+        x_est = dat_est[c("Crown_Width_NS", "DBH", "Condition")],
+        resolution = "Condition",
+        data_type = "raw")
+```
