@@ -1,0 +1,46 @@
+---
+title: "GREGORY practice"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+```
+
+```{r}
+# Initial Wrangle
+# need province_proportions
+# need total_data
+province_proportions_new <- province_proportions %>%
+  filter(fips == 49009) %>%
+  mutate(prop = percent,
+         eco_pro_code = province) %>%
+  select(eco_pro_code, prop)
+```
+
+```{r}
+# wrangle forbio pixel
+# iw_subsec_forbio_stats <- read_csv("~/math343_s20_forests/totally legal data/New Pixel Data/iw_subsec_forbio_stats.csv")
+pixel_pro_forbio <- iw_subsec_forbio_stats %>%
+  mutate(eco_pro_code = substr(zoneid, 1, 3)) %>%
+  mutate(total = npixels * mean) %>%
+  group_by(eco_pro_code) %>%
+  summarize(total_mean = sum(total),
+            total_pixels = sum(npixels)) %>% 
+  mutate(mean = total_mean/total_pixels, 
+         variable = "forbio") %>%
+  select(eco_pro_code, variable, mean) 
+
+```
+
+```{r}
+gregory(y = total_data$BALIVE_TPA, 
+        x_sample =  total_data[c("forbio", "eco_pro_code", "fips")],
+        x_pop = pixel_pro_forbio,
+        # x_est = total_data[c("forbio", "eco_pro_code", "fips")],
+        resolution = "eco_pro_code",
+        estimation = "fips",
+        est_name = 49009,
+        data_type = "means", 
+        prop = pixel_pro_forbio)
+```

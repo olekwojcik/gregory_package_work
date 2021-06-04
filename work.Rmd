@@ -70,7 +70,7 @@ y_bar_function <- function(y, x_sample, estimation, est_name){
   return(result_df$y_bar[[1]])
 }
 
-gregory <- function(y, x_sample, x_pop, x_est, resolution, estimation, est_name,
+gregory <- function(y, x_sample, x_pop, x_est = NA, resolution, estimation, est_name,
                         data_type = "raw",
                         prop = NA){
   
