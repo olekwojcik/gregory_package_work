@@ -19,7 +19,7 @@ dat <- get_pdxTrees_parks() %>%
   as.data.frame() %>%
   drop_na(DBH, Crown_Width_NS, Tree_Height) %>%
   filter(Condition != "Dead") %>%
-  select(UserID, Tree_Height, Crown_Width_NS, DBH, Condition)
+  select(UserID, Tree_Height, Crown_Width_NS, DBH, Condition, Family)
 
 
 dat_s <- dat %>%
@@ -30,7 +30,7 @@ dat <- dat %>%
   select(-Tree_Height)
 
 dat_est <- dat %>%
-  sample_n(10000)
+  filter(Family == "Pinaceae")
 ```
 
 
@@ -61,23 +61,34 @@ est <- greg(y = dat_s$Tree_Height, x_sample =  dat_s[ c("Crown_Width_NS", "DBH")
 
 
 ```{r}
-y_bar_function <- function(y, x_sample){
+y_bar_function <- function(y, x_sample, estimation, est_name){
   result_df <- x_sample %>%
-    dplyr::select(.data[[y]]) %>%
-    summarize(y_bar = mean(.data[[y]]))
+    dplyr::filter(.data[[estimation]] == est_name) %>%
+    dplyr::select({{ y }}) %>%
+    summarize(y_bar = mean({{ y }}))
   
   return(result_df$y_bar[[1]])
 }
 
-gregory_raw <- function(y, x_sample, x_pop, x_est, resolution, data_type = "raw",
+gregory <- function(y, x_sample, x_pop, x_est, resolution, estimation, est_name,
+                        data_type = "raw",
                         prop = NA){
   
-  predictors <- names(x_pop)[!(names(x_pop) %in% resolution)]
+  #to keep inputs the same, let's attack y to x_sample
+  
+  x_sample <- x_sample %>%
+    dplyr::mutate(y_column_name = y)
+  
+  
+  predictors <- names(x_pop)[!(names(x_pop) %in% c(resolution, estimation))]
+  
   
   #y bar
   
-  y_bar <- y_bar_function(y = y,
-                          x_sample = x_sample)
+  y_bar <- y_bar_function(y = y_column_name,
+                          x_sample = x_sample,
+                          estimation = estimation,
+                          est_name = est_name)
   
   #check what resolutions are in estimation unit of interest
   #p represents set of resolutions
@@ -154,7 +165,7 @@ gregory_raw <- function(y, x_sample, x_pop, x_est, resolution, data_type = "raw"
         x_sample_filtered <- x_sample %>%
           dplyr::filter(.data[[resolution]] == period_two)
         
-        model <- lm(as.formula(c(paste(y, "~"),
+        model <- lm(as.formula(c(paste("y_column_name", "~"),
                         paste(predictors, collapse = " + "))),
            data = x_sample_filtered)
         
@@ -192,32 +203,16 @@ gregory_raw <- function(y, x_sample, x_pop, x_est, resolution, data_type = "raw"
     
     print(result)
     print(y_bar)
-    
-    #iterate over resolution units
-    
-    mean_estimate <- p %>%
-      map(.f = function(.){
-        
-      })
-    
  
                     }
 
-gregory <- function(y, x_sample, x_pop, x_est, resolution,
-                    data_type = "raw"){
-  
-  
-  
-  if(data_type == "raw"){
-    gregory_raw(y = y, x_sample = x_sample, x_pop = x_pop,
-                x_est = x_est, resolution = resolution)
-  }
-  
-}
 
-gregory(y = "Tree_Height", x_sample =  dat_s[c("Tree_Height", "Crown_Width_NS", "DBH", "Condition")],
-        x_pop = dat[c("Crown_Width_NS", "DBH", "Condition")],
-        x_est = dat_est[c("Crown_Width_NS", "DBH", "Condition")],
+
+gregory(y = dat_s$Tree_Height, x_sample =  dat_s[c("Crown_Width_NS", "DBH", "Condition", "Family")],
+        x_pop = dat[c("Crown_Width_NS", "DBH", "Condition", "Family")],
+        x_est = dat_est[c("Crown_Width_NS", "DBH", "Condition", "Family")],
         resolution = "Condition",
+        estimation = "Family",
+        est_name = "Pinaceae",
         data_type = "raw")
 ```
