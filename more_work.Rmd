@@ -204,8 +204,8 @@ gregory <- function(y, #vector of response variable (BALIVE)
   
   
     
-  
-  return(result$result[[1]] + y_bar)
+  print(y_bar)
+  return(y_bar + result$result[[1]])
   
 }
 

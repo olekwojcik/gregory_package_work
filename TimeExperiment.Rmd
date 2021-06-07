@@ -1,0 +1,115 @@
+---
+title: "Efficiency Experiment"
+output: html_document
+---
+
+```{r}
+#load libraries and set seed
+library(mase)
+library(pdxTrees)
+library(tidyverse)
+
+set.seed(13)
+```
+
+```{r mase}
+# Initial Data
+dat <- get_pdxTrees_parks() %>%
+  as.data.frame() %>%
+  drop_na(DBH, Crown_Width_NS, Tree_Height) %>%
+  filter(Condition != "Dead") %>%
+  select(UserID, Tree_Height, Crown_Width_NS)
+```
+
+```{r functions}
+# Relevant Code vector
+vector_f <- function() {
+  result <- dat$Tree_Height * dat$Crown_Width_NS
+}
+# Relevant Code mutate
+dplyr_f <- function(){
+  result <- dat %>%
+    mutate(mult = Tree_Height * Crown_Width_NS) %>%
+    select(mult)
+}
+```
+
+```{r timing}
+# Timing vector
+start.time <- Sys.time()
+invisible(rep(vector_f(), 1000))
+end.time <- Sys.time()
+time.taken1 <- end.time - start.time
+time.taken1
+
+start.time <- Sys.time()
+# Timing mutate
+end.time <- Sys.time()
+invisible(rep(dplyr_f(), 1000))
+time.taken2 <- end.time - start.time
+time.taken2
+```
+
+```{r timing 2}
+t_dat <- map_dbl(1:100, .f = function(.) {
+# Timing vector
+# set.seed(.)
+start.time <- Sys.time()
+invisible(rep(vector_f(), 1000))
+end.time <- Sys.time()
+time.taken1 <- end.time - start.time
+time.taken1
+
+start.time <- Sys.time()
+# Timing mutate
+end.time <- Sys.time()
+invisible(rep(dplyr_f(), 1000))
+time.taken2 <- end.time - start.time
+time.taken2
+
+return(time.taken1 - time.taken2)
+}
+)
+# using dplyr is more efficient than vector work!
+```
+
+```{r matrix function}
+# initialize matrices
+t_height_matrix <- as.matrix(dat[,2])
+crown_matrix <- as.matrix(dat[,3])
+# matrix function
+mat_f <- function(){
+  result <- (t(t_height_matrix) %*% crown_matrix)
+  return(result[[1]])
+}
+# new mutate
+dplyr2_f <- function(){
+  result <- dat %>%
+    mutate(mult = Tree_Height * Crown_Width_NS) %>%
+    summarize(result = sum(mult))
+  return(result$result[[1]])
+}
+```
+
+```{r compare_matrix_timing}
+t_dat_m <- map_dbl(1:100, .f = function(.) {
+# Timing matrix
+# set.seed(.)
+start.time <- Sys.time()
+invisible(rep(mat_f(), 1000))
+end.time <- Sys.time()
+time.taken1 <- end.time - start.time
+time.taken1
+
+start.time <- Sys.time()
+# Timing mutate
+end.time <- Sys.time()
+invisible(rep(dplyr2_f(), 1000))
+time.taken2 <- end.time - start.time
+time.taken2
+
+return(time.taken1 - time.taken2)
+}
+)
+summary(t_dat_m)
+```

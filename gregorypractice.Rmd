@@ -7,15 +7,37 @@ output: html_document
 library(tidyverse)
 ```
 
-```{r}
+```{r gregory}
+# Example
+gregory(y = dat_s$Tree_Height,
+        x_sample = dat_s[c("Crown_Width_NS", "DBH", "Condition", "Family")],
+        x_pop = dat_x_bar %>% filter(Family == "Pinaceae") %>% select(-Family),
+        resolution = "Condition",
+        estimation = "Family",
+        y_est_name = "Pinaceae",
+        prop = dat_prop %>% filter(Family == "Pinaceae") %>% select(-Family))
+```
+
+```{r pixel province, eval = FALSE}
 # Initial Wrangle
 # need province_proportions
+# province_proportions <- read_csv("~/math343_s20_forests/totally legal data/province_proportions.csv")
 # need total_data
+# total_data <- read_csv("~/math343_s20_forests/data/forKelly_20190206/total_data.csv")
 province_proportions_new <- province_proportions %>%
   filter(fips == 49009) %>%
   mutate(prop = percent,
          eco_pro_code = province) %>%
   select(eco_pro_code, prop)
+```
+
+```{r pixel_means}
+# auxillary variables pixel level
+# pixel_county <- read_csv("~/math343_s20_forests/totally legal data/pixel_county.csv")
+pixel_mean <- pixel_county %>% 
+  mutate(mean = mean_forbio, 
+         variable = "forbio") %>% 
+  select(fips, variable, mean)
 ```
 
 ```{r}
@@ -36,11 +58,9 @@ pixel_pro_forbio <- iw_subsec_forbio_stats %>%
 ```{r}
 gregory(y = total_data$BALIVE_TPA, 
         x_sample =  total_data[c("forbio", "eco_pro_code", "fips")],
-        x_pop = pixel_pro_forbio,
-        # x_est = total_data[c("forbio", "eco_pro_code", "fips")],
+        x_pop = pixel_mean %>% filter(fips == 49009) %>% select(-fips),
         resolution = "eco_pro_code",
         estimation = "fips",
-        est_name = 49009,
-        data_type = "means", 
-        prop = pixel_pro_forbio)
+        y_est_name = 49009,
+        prop = province_proportions_new)
 ```
