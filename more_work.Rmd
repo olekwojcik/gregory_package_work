@@ -1,0 +1,230 @@
+---
+title: "work 2"
+output: pdf_document
+---
+
+```{r}
+#load libraries and set seed
+library(mase)
+library(pdxTrees)
+library(tidyverse)
+
+set.seed(13)
+```
+
+```{r}
+#load and wrangle data
+dat <- get_pdxTrees_parks() %>%
+  as.data.frame() %>%
+  drop_na(DBH, Crown_Width_NS, Tree_Height) %>%
+  filter(Condition != "Dead") %>%
+  select(UserID, Tree_Height, Crown_Width_NS, DBH, Condition, Family)
+
+
+dat_s <- dat %>%
+  sample_n(1000) %>%
+  as.data.frame()
+
+dat <- dat %>%
+  select(-Tree_Height)
+
+dat_est <- dat %>%
+  filter(Family == "Pinaceae")
+
+predictors <- c("Crown_Width_NS", "DBH")
+
+dat_x_bar <- dat %>%
+  dplyr::group_by(Family) %>%
+  dplyr::summarize(dplyr::across(predictors,
+                                mean)) %>%
+  tidyr::pivot_longer(!Family,
+                            names_to = "variable",
+                            values_to = "mean")
+
+dat_count_est <- dat %>%
+  group_by(Family) %>%
+  summarize(count = n())
+
+dat_prop <- left_join(dat, dat_count_est, by = "Family") %>%
+  group_by(Condition, Family) %>%
+  summarize(prop = n()/count) %>%
+  distinct() %>%
+  ungroup()
+
+
+dat_x_means <- get_pdxTrees_parks() %>%
+  as.data.frame() %>%
+  drop_na(DBH, Crown_Width_NS, Tree_Height) %>%
+  dplyr::summarize(DBH = mean(DBH), Crown_Width_NS = mean(Crown_Width_NS), 
+            Tree_Height = mean(Tree_Height))
+```
+
+
+```{r}
+#mase
+
+est <- greg(y = dat_s$Tree_Height, x_sample =  dat_s[c("Crown_Width_NS", "DBH", "Condition")],
+            x_pop = dat[c("Crown_Width_NS", "DBH", "Condition")],
+            data_type = "raw")
+
+est$pop_mean
+
+est$pop_mean_var
+
+
+
+
+est <- greg(y = dat_s$Tree_Height, x_sample =  dat_s[ c("Crown_Width_NS", "DBH")],
+            x_pop = dat_x_means, var_est = TRUE,
+            data_type = "means", N = 25271)
+#est
+```
+$$\bar{y} + \sum_{l \in p} w_l(\pmb{\bar{x}}^T_N\pmb{\beta}_l - \pmb{\bar{x}}^T_n\pmb{\beta}_l)$$
+
+
+```{r}
+gregory <- function(y, #vector of response variable (BALIVE)
+                    x_sample, #sample "plot" data, total_data, without y, with res and est
+                    x_pop, #means, columns are estimation, "variable" and "mean"
+                    resolution, #character, column name of resolution unit in dfs
+                    estimation, # character, column name of estimation unit in dfs
+                    y_est_name, #character of what "county" we want to estimate,
+                    prop, # dataframe, columns: resolution, estimation, and "prop"
+                    formula = FALSE # optional, specify formula or leave F for everything
+){
+  #first attatch y to x_sample for easy wrangling
+  
+  
+  neo_x_sample <- x_sample %>%
+    dplyr::mutate(y_variable = y)
+  
+
+  
+  #find y bar by filtering to estimation unit of interest
+  
+  y_bar_df <- neo_x_sample %>%
+    dplyr::filter(.data[[estimation]] == y_est_name) %>%
+    summarize(mean = mean(y_variable))
+  
+  y_bar <- y_bar_df$mean[[1]]
+  
+  #use proportions to filter out only RUs that we care about
+  
+  res_units_df <- prop %>%
+    select(-prop)
+  
+  res_units <- dplyr::pull(res_units_df)
+  
+  neo_x_sample <- neo_x_sample %>%
+    dplyr::filter(.data[[resolution]] %in% res_units)
+  
+  neo_x_pop <- x_pop 
+  
+  #now we can make the betas off of neo_x_sample
+  
+  if(formula == FALSE){
+    #if formula is not provided
+    predictors <-  unique(dplyr::pull(neo_x_pop, variable))
+    
+
+    
+     betas <- res_units %>%
+      purrr::map_dfr(.f = function(.){
+        
+        #this is to avoid weird bug
+        period_two <- .
+        
+        x_sample_filtered <- neo_x_sample %>%
+          dplyr::filter(.data[[resolution]] == period_two)
+        
+        model <- lm(as.formula(c(paste("y_variable", "~"),
+                        paste(predictors, collapse = " + "))),
+           data = x_sample_filtered)
+        
+        result <- data.frame(resolution = .,
+                             variable = names(model$coefficients),
+                             beta = unname(model$coefficients))
+        
+        names(result)[[1]] <- resolution
+        
+        return(result)
+        
+      })
+  }
+  
+  if(formula != FALSE){
+    #if formula is provided
+     betas <- res_units %>%
+      purrr::map_dfr(.f = function(.){
+        
+        #this is to avoid weird bug
+        period_two <- .
+        
+        x_sample_filtered <- x_sample %>%
+          dplyr::filter(.data[[resolution]] == period_two)
+        
+        model <- lm(formula,
+           data = neo_x_sample)
+        
+        result <- data.frame(resolution = .,
+                             variable = names(model$coefficients),
+                             beta = unname(model$coefficients))
+        
+        names(result)[[1]] <- resolution
+        
+        return(result)
+        
+      })
+  }
+  
+
+  #join x bar little n
+  math_df <- dplyr::left_join(betas, x_pop, by = "variable") %>%
+    dplyr::rename(mean_n = mean)
+  
+  #join x bar big n
+    tidy_x_sample <- x_sample %>%
+    tidyr::pivot_longer(!c(.data[[resolution]], .data[[estimation]]),
+                 names_to = "variable",
+                 values_to = "value") %>%
+      dplyr::filter(.data[[estimation]] == y_est_name) %>%
+      group_by(variable) %>%
+      summarize(mean_N = mean(value))
+    
+  math_df <- dplyr::left_join(math_df, tidy_x_sample, by = "variable") %>%
+    left_join(prop, by = resolution)
+  
+  
+  math_df[is.na(math_df)] <- 1
+  
+  result <- math_df %>%
+    group_by(.data[[resolution]]) %>%
+    summarize(term = (sum(beta * mean_N * prop)) - sum(beta * mean_n * prop)) %>%
+    summarize(result = sum(term))
+  
+  
+    
+  
+  return(result$result[[1]] + y_bar)
+  
+}
+
+gregory(y = dat_s$Tree_Height,
+        x_sample = dat_s[c("Crown_Width_NS", "DBH", "Condition", "Family")],
+        x_pop = dat_x_bar %>% filter(Family == "Pinaceae") %>% select(-Family),
+        resolution = "Condition",
+        estimation = "Family",
+        y_est_name = "Pinaceae",
+        prop = dat_prop %>% filter(Family == "Pinaceae") %>% select(-Family))
+```
+
+
+
+
+
+
+
+
+
+
+
