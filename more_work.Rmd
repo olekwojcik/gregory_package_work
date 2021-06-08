@@ -215,8 +215,11 @@ gregory(y = dat_s$Tree_Height,
         resolution = "Condition",
         estimation = "Family",
         y_est_name = "Pinaceae",
-        prop = dat_prop %>% filter(Family == "Pinaceae") %>% select(-Family))
+        prop = dat_prop %>% filter(Family == "Pinaceae") %>% select(-Family)) 
+
+#hello
 ```
+
 
 
 
