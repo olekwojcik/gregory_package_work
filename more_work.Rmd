@@ -79,10 +79,17 @@ est <- greg(y = dat_s$Tree_Height, x_sample =  dat_s[ c("Crown_Width_NS", "DBH")
             data_type = "means", N = 25271)
 #est
 ```
+
+
+$$\pmb{\beta}^*_l = \pmb{\beta}_l  w_l$$
+$$\bar{y} + \sum_{l \in p} (\pmb{\bar{x}}^T_N\pmb{\beta}^*_l - \pmb{\bar{x}}^T_n\pmb{\beta}^*_l)$$
+
+
 $$\bar{y} + \sum_{l \in p} w_l(\pmb{\bar{x}}^T_N\pmb{\beta}_l - \pmb{\bar{x}}^T_n\pmb{\beta}_l)$$
 
 
-```{r}
+
+```{r, warning = F, message=F}
 gregory <- function(y, #vector of response variable (BALIVE)
                     x_sample, #sample "plot" data, total_data, without y, with res and est
                     x_pop, #means, columns are estimation, "variable" and "mean"
@@ -92,6 +99,7 @@ gregory <- function(y, #vector of response variable (BALIVE)
                     prop, # dataframe, columns: resolution, estimation, and "prop"
                     formula = FALSE # optional, specify formula or leave F for everything
 ){
+  options(warn = -1)
   #first attatch y to x_sample for easy wrangling
   
   
@@ -115,8 +123,6 @@ gregory <- function(y, #vector of response variable (BALIVE)
   
   res_units <- dplyr::pull(res_units_df)
   
-  neo_x_sample <- neo_x_sample %>%
-    dplyr::filter(.data[[resolution]] %in% res_units)
   
   neo_x_pop <- x_pop 
   
@@ -125,6 +131,7 @@ gregory <- function(y, #vector of response variable (BALIVE)
   if(formula == FALSE){
     #if formula is not provided
     predictors <-  unique(dplyr::pull(neo_x_pop, variable))
+    
     
 
     
@@ -136,10 +143,13 @@ gregory <- function(y, #vector of response variable (BALIVE)
         
         x_sample_filtered <- neo_x_sample %>%
           dplyr::filter(.data[[resolution]] == period_two)
+
         
         model <- lm(as.formula(c(paste("y_variable", "~"),
                         paste(predictors, collapse = " + "))),
            data = x_sample_filtered)
+        
+
         
         result <- data.frame(resolution = .,
                              variable = names(model$coefficients),
@@ -151,6 +161,8 @@ gregory <- function(y, #vector of response variable (BALIVE)
         
       })
   }
+  
+
   
   if(formula != FALSE){
     #if formula is provided
@@ -196,16 +208,22 @@ gregory <- function(y, #vector of response variable (BALIVE)
   
   
   math_df[is.na(math_df)] <- 1
-  
+
   result <- math_df %>%
+    dplyr::mutate(weighted_beta = beta * prop) %>%
+    dplyr::mutate(matrix_term_n = mean_n * weighted_beta,
+                  matrix_term_N = mean_N * weighted_beta) %>%
     group_by(.data[[resolution]]) %>%
-    summarize(term = (sum(beta * mean_N * prop)) - sum(beta * mean_n * prop)) %>%
-    summarize(result = sum(term))
+    summarize(matrix_term_n = sum(matrix_term_n),
+              matrix_term_N = sum(matrix_term_N)) %>%
+    dplyr::mutate(sum_difference = -matrix_term_N + matrix_term_n) %>%
+    ungroup() %>%
+    dplyr::summarize(answer = sum(sum_difference))
   
   
-    
-  print(y_bar)
-  return(y_bar + result$result[[1]])
+  
+
+  return(y_bar + result$answer[[1]])
   
 }
 
@@ -219,6 +237,9 @@ gregory(y = dat_s$Tree_Height,
 
 #hello
 ```
+
+
+
 
 
 
