@@ -241,9 +241,163 @@ gregory(y = dat_s$Tree_Height,
 
 
 
+Gregory all function
+
+
+```{r}
+
+get_beta <- function(plot_df){
+  
+}
+
+gregory_all <- function(
+  plot_df, #all plot data (totaldata)
+  resolution, #character, name of resolution in dfs
+  estimation, #character, name of estimation in dfs
+  pixel_estimation_means, #means of predictors per plot df
+  proportions, #estimation resolution prop df
+  formula, #formula for model
+  prop #character, name of percent
+){
+  
+  
+  #i want to get betas for every province
+  #so first make a list of the provinces
+  
+  provinces <- proportions %>%
+    dplyr::select(.data[[resolution]]) %>%
+    dplyr::pull() %>%
+    unique()
+  
+  #get betas for each province
+  
+  betas <- provinces %>%
+      purrr::map_dfr(.f = function(.){
+        
+        #this is to avoid weird bug
+        period_two <- .
+        
+        x_sample_filtered <- plot_df %>%
+          dplyr::filter(.data[[resolution]] == period_two)
+
+        
+        model <- lm(formula,
+                    data = x_sample_filtered)
+        
+
+        
+        result <- data.frame(resolution = .,
+                             variable = names(model$coefficients),
+                             beta = unname(model$coefficients))
+        
+        names(result)[[1]] <- resolution
+        
+        return(result)
+        
+      })
+  
+  #now let's get those predictors
+  
+  predictors <- betas  %>%
+    dplyr::select(variable) %>%
+    dplyr::pull() %>%
+    unique()
+  
+  predictors <- predictors[!predictors %in% "(Intercept)"]
+  
+  
+  #now let's get the weighted betas
+  
+  weighted_beta_df <- dplyr::left_join(proportions, betas, by = resolution) %>%
+    dplyr::mutate(weighted_beta = beta * .data[[prop]]) %>%
+    dplyr::select(.data[[estimation]],
+                  .data[[resolution]],
+                  variable,
+                  weighted_beta)
+  
+  
+  #now lets pivot the n means(maybe ask for this as input?)
+  
+  
+  N_df <- dplyr::select(pixel_estimation_means,
+                           c(estimation, predictors))
+  
+  N_df <- tidyr::pivot_longer(N_df, !.data[[estimation]],
+                                 names_to = "variable",
+                                 values_to = "mean_N")
+  
+  #now combine with betas
+  
+  term_df <- left_join(weighted_beta_df, N_df, by = c(estimation, "variable"))
+  
+  #now let's get the N means
+  
+  n_df <- plot_df %>%
+    dplyr::group_by(.data[[estimation]]) %>%
+    dplyr::summarize(across(predictors, mean)) %>%
+    tidyr::pivot_longer(!.data[[estimation]],
+                        names_to = "variable",
+                        values_to = "mean_n")
+  
+  #then join N to the term_df
+  
+  term_df <- left_join(term_df, n_df, by = c(estimation, "variable"))
+  
+  
+  
+  #replace na's from join (intercept) with 1's
+  
+  term_df$mean_n[is.na(term_df$mean_n)] <- 1
+  term_df$mean_N[is.na(term_df$mean_N)] <- 1
+  
+  
+  term_df <- term_df %>%
+    mutate(term_n = weighted_beta * mean_n,
+           term_N = weighted_beta * mean_N) %>%
+    group_by(.data[[estimation]]) %>%
+    summarize(term_n = sum(term_n),
+              term_N = sum(term_N)) %>%
+    mutate(term = term_N - term_n) %>%
+    select(fips, term)
+  
+  #get Y var
+  
+  y <- all.vars(formula)[1]
+
+  
+  #get y_bars
+  
+  y_bar_df <- plot_df %>%
+    dplyr::group_by(.data[[estimation]]) %>%
+    summarize(y_bar = mean(.data[[y]]))
+  
+  #join with the rest and get the final result
+  
+  result <- left_join(term_df, y_bar_df, by = estimation) %>%
+    dplyr::mutate(estimate = y_bar + term) %>%
+    dplyr::select(.data[[estimation]], estimate)
+  
+  return(result)
+  
+  
+  
+}
+
+gregory_all(plot_df = total_data %>% mutate(fips = as.numeric(fips)),
+            resolution = "eco_pro_code",
+            estimation = "fips",
+            pixel_estimation_means = pixel_county_new,
+            proportions = province_proportions,
+            formula = BALIVE_TPA ~ forbio,
+            prop = "percent")
+```
 
 
 
+
+$$\pmb{\beta}^*_l = \pmb{\beta}_l  w_l$$
+
+$$\bar{y} + \sum_{l \in p} (\pmb{\bar{x}}^T_N\pmb{\beta}^*_l - \pmb{\bar{x}}^T_n\pmb{\beta}^*_l)$$
 
 
 
