@@ -1,0 +1,484 @@
+---
+title: "gregoryexperiment"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(glue)
+```
+
+```{r samload}
+total_data <- read_csv("~/math343_s20_forests/data/forKelly_20190206/total_data.csv")
+iw_cnty_forbio_250m_stats <- read_csv("~/math343_s20_forests/totally legal data/Pixels/iw_cnty_forbio_250m_stats.csv")
+province_proportions <- read_csv("~/math343_s20_forests/totally legal data/province_proportions.csv")
+```
+
+```{r oldgregorydata}
+# Olek Code
+# total_data <- read_csv(here("data copy", "total_data.csv")) %>%
+#   drop_na() %>%
+#   rename(section = eco_sec_code) %>%
+#   rename(province = eco_pro_code)
+# Plot data (total)
+# Sam Code
+# total_data <- read_csv(here("data", "total_data.csv")) %>%
+total_data_old <- total_data %>%
+  drop_na() %>%
+  rename(province = eco_pro_code) %>%
+  filter(fips != 8014)
+# Section proportions by county
+# province_proportions <- read.csv(here("totally legal data", "province_proportions.csv")) %>%
+province_proportions_old <- province_proportions %>%
+  filter(fips %in% total_data$fips)
+
+# pixels
+# pixel_county_forprob <- read.csv(here("totally legal data", "Pixels", "iw_cnty_forprob_250m_stats.csv"))
+# pixel_county_forbio <- read.csv(here("totally legal data", "Pixels", "iw_cnty_forbio_250m_stats.csv")) 
+# pixel_county_forcover <- read.csv(here("totally legal data", "Pixels", "iw_cnty_tcc2016_30m_stats.csv"))
+
+# pixel_county_forprob <- iw_cnty_forprob_250m_stats
+
+pixel_county_forbio <- iw_cnty_forbio_250m_stats
+
+# pixel_county_forcover <- iw_cnty_tcc2016_30m_stats
+
+# pixel_county_forprob <- pixel_county_forprob %>%
+#  rename(mean_forprob = mean)
+pixel_county_forbio <- pixel_county_forbio %>%
+  rename(mean_forbio = mean)
+# pixel_county_canopy <- pixel_county_forcover %>%
+#  rename(mean_nlcd11 = mean)
+
+pixel_county <- pixel_county_forbio %>%
+  rename(fips = zoneid)
+
+pixel_means_old <- pixel_county %>%
+  select(fips, mean_forbio)
+
+# pixel_county <- pixel_county_forprob %>%
+#   left_join(pixel_county_forbio, by = "zoneid") %>%
+#   left_join(pixel_county_canopy, by = "zoneid") %>%
+#   rename(fips = zoneid)
+
+# pixel_means <- pixel_county %>%
+#   select(fips, mean_nlcd11, mean_forbio, mean_forprob)
+```
+
+```{r}
+# old GREGORY
+gregory_old <- function(df_plots, y_plot, x_plot, df_means, x_means, df_props, prop, estimation, resolution) {
+  
+  # build betas
+  
+#proportions_new <- {{ df_props }} %>% filter({{ estimation }} %in% select({{ df_plots }}, {{ estimation }}))
+
+
+est_join <- names(
+  df_props %>%
+    select({{ estimation }})
+)
+
+y_text <- names(
+  df_plots %>%
+    select({{ y_plot }})
+)
+
+x_text <- names(
+  df_plots %>%
+    select({{ x_plot }})
+)
+
+unique_res <- as.character(t(unique(select(df_plots, {{ resolution }}))))
+
+df_list <- unique_res %>%
+    map(.f = function(.){
+    filter(
+      {{ df_plots }}, {{ resolution }} == .
+    )
+  })
+
+formula <- as.formula(as.character(glue(y_text, " ~ ", glue_collapse(x_text, sep = " + "))))
+
+number_of_vars <- length(x_text) + 1
+
+
+
+
+coefs_list <- df_list %>%
+    map(.f = function(.){
+reg <- lm(formula, data = .)
+
+coefs <- as.data.frame(t(as.data.frame(summary(reg)$coefficients[2:number_of_vars], row.names = x_text)))
+
+rownames(coefs) <- c()
+
+coefs
+
+  })
+
+
+
+unique_res_length <- 1:length(unique_res)
+
+
+
+total_data_new <- {{ df_plots }} %>%
+  select(-{{ x_plot }})
+
+
+# get  betas/weights
+
+df_list_new <- unique_res %>%
+    map(.f = function(.){
+    filter(
+      {{ df_props }}, {{ resolution }} == .
+    ) 
+  })
+
+
+
+df_list_coefs <- unique_res_length %>%
+    map(.f = function(.){
+      bind_cols(df_list_new[.], coefs_list[.])
+    })
+
+
+
+df_coefs <- bind_rows(df_list_coefs) %>%
+  drop_na() %>%
+  arrange({{ estimation }}, {{ resolution }}) %>%
+  select({{ x_plot }})
+
+beta_names <- as.list(names(df_coefs))
+
+
+
+# make little n x bar
+
+total_data_group_n <- {{ df_plots }} %>%
+  group_by({{ estimation }}) %>%
+  summarize(
+    across(
+      .cols = {{ x_plot }},
+      .fns = ~ mean(.x)
+    )
+  ) %>%
+  select({{ estimation }}, {{ x_plot }})
+
+
+little_n_df <- left_join(
+  df_props, total_data_group_n, by = est_join
+) %>%
+  drop_na() %>%
+  arrange({{ estimation }}, {{ resolution }}) %>%
+  transmute(
+    across(
+      .cols = {{ x_plot }},
+      .fns = ~ .x,
+      .names = "n_blah_{col}"
+    )
+  ) %>%
+  select(starts_with("n_blah_"))
+
+little_n_names <- names(little_n_df)
+
+
+
+# make big N x bar
+
+big_N_df <- left_join(df_props, df_means, by = est_join) %>%
+  drop_na() %>%
+  arrange({{ estimation }}, {{ resolution }}) %>%
+  select({{ x_means }})
+
+big_N_names <- names(big_N_df)
+
+
+# weird multiplication
+
+
+little_n_betas <- bind_cols(df_coefs, little_n_df)
+
+big_N_betas <- bind_cols(df_coefs, big_N_df)
+
+little_n_products <- map2(
+  beta_names, little_n_names, .f = ~
+      little_n_betas %>%
+        transmute(product = .data[[.x]] * .data[[.y]])
+) %>%
+  bind_cols()
+
+little_n_sum <- as.data.frame(
+  rowSums(
+    little_n_products))
+
+big_N_products <- map2(
+  beta_names, big_N_names, .f = ~
+      big_N_betas %>%
+        transmute(product = .data[[.x]] * .data[[.y]])
+) %>%
+  bind_cols() 
+
+big_N_sum <- as.data.frame(
+  rowSums(
+    big_N_products))
+
+the_ns <- bind_cols(
+  little_n_sum, big_N_sum
+)
+
+
+
+the_ns_diff <- as.data.frame(
+  transmute(the_ns,
+    diff = rowSums(big_N_products) - rowSums(little_n_products)
+  ))
+
+
+# make y bar df
+
+total_data_group_y <- {{ df_plots }} %>%
+  group_by({{ estimation }}) %>%
+  summarize(
+    y_bar = mean({{ y_plot }})
+    )
+
+
+y_bar_df <- left_join(
+  df_props, total_data_group_y, by = est_join
+) %>%
+  arrange({{ estimation }}, {{ resolution }}) %>%
+  drop_na()
+
+# combine
+
+y_bar_and_ns <- bind_cols(y_bar_df, the_ns_diff) 
+
+y_bar_and_ns <- y_bar_and_ns %>% mutate(
+    diff_percent = diff * {{ prop }}
+  ) %>%
+  group_by({{ estimation }}) %>%
+  summarize(y_bar = mean(y_bar),
+            diff = sum(diff_percent)) %>%
+  ungroup() %>%
+  mutate(
+    estimate = y_bar + diff
+  ) %>% select(
+    {{ estimation }}, estimate
+  )
+}
+```
+
+```{r newgregorydata}
+# load pixel_county
+# load province_proportions
+# load iw_subsec_forbio_stats
+# load total_data
+total_data <- read_csv("~/math343_s20_forests/data/forKelly_20190206/total_data.csv")
+province_proportions <- read_csv("~/math343_s20_forests/totally legal data/province_proportions.csv")
+pixel_county <- read_csv("~/math343_s20_forests/totally legal data/pixel_county.csv")
+iw_subsec_forbio_stats <- read_csv("~/math343_s20_forests/totally legal data/New Pixel Data/iw_subsec_forbio_stats.csv")
+```
+
+```{r}
+# new GREGORY
+gregory <- function(y, #vector of response variable (BALIVE)
+                    x_sample, #sample "plot" data, total_data, without y, with res and est
+                    x_pop, #means, columns are estimation, "variable" and "mean"
+                    resolution, #character, column name of resolution unit in dfs
+                    estimation, # character, column name of estimation unit in dfs
+                    y_est_name, #character of what "county" we want to estimate,
+                    prop, # dataframe, columns: resolution, estimation, and "prop"
+                    formula = FALSE # optional, specify formula or leave F for everything
+){
+  options(warn = -1)
+  #first attatch y to x_sample for easy wrangling
+  
+  
+  neo_x_sample <- x_sample %>%
+    dplyr::mutate(y_variable = y)
+  
+
+  
+  #find y bar by filtering to estimation unit of interest
+  
+  y_bar_df <- neo_x_sample %>%
+    dplyr::filter(.data[[estimation]] == y_est_name) %>%
+    summarize(mean = mean(y_variable))
+  
+  y_bar <- y_bar_df$mean[[1]]
+  
+  #use proportions to filter out only RUs that we care about
+  
+  res_units_df <- prop %>%
+    select(-prop)
+  
+  res_units <- dplyr::pull(res_units_df)
+  
+  
+  neo_x_pop <- x_pop 
+  
+  #now we can make the betas off of neo_x_sample
+  
+  if(formula == FALSE){
+    #if formula is not provided
+    predictors <-  unique(dplyr::pull(neo_x_pop, variable))
+    
+    
+
+    
+     betas <- res_units %>%
+      purrr::map_dfr(.f = function(.){
+        
+        #this is to avoid weird bug
+        period_two <- .
+        
+        x_sample_filtered <- neo_x_sample %>%
+          dplyr::filter(.data[[resolution]] == period_two)
+
+        
+        model <- lm(as.formula(c(paste("y_variable", "~"),
+                        paste(predictors, collapse = " + "))),
+           data = x_sample_filtered)
+        
+
+        
+        result <- data.frame(resolution = .,
+                             variable = names(model$coefficients),
+                             beta = unname(model$coefficients))
+        
+        names(result)[[1]] <- resolution
+        
+        return(result)
+        
+      })
+  }
+  
+
+  
+  if(formula != FALSE){
+    #if formula is provided
+     betas <- res_units %>%
+      purrr::map_dfr(.f = function(.){
+        
+        #this is to avoid weird bug
+        period_two <- .
+        
+        x_sample_filtered <- x_sample %>%
+          dplyr::filter(.data[[resolution]] == period_two)
+        
+        model <- lm(formula,
+           data = neo_x_sample)
+        
+        result <- data.frame(resolution = .,
+                             variable = names(model$coefficients),
+                             beta = unname(model$coefficients))
+        
+        names(result)[[1]] <- resolution
+        
+        return(result)
+        
+      })
+  }
+  
+
+  #join x bar little n
+  math_df <- dplyr::left_join(betas, x_pop, by = "variable") %>%
+    dplyr::rename(mean_n = mean)
+  
+  #join x bar big n
+    tidy_x_sample <- x_sample %>%
+    tidyr::pivot_longer(!c(.data[[resolution]], .data[[estimation]]),
+                 names_to = "variable",
+                 values_to = "value") %>%
+      dplyr::filter(.data[[estimation]] == y_est_name) %>%
+      group_by(variable) %>%
+      summarize(mean_N = mean(value))
+    
+  math_df <- dplyr::left_join(math_df, tidy_x_sample, by = "variable") %>%
+    left_join(prop, by = resolution)
+  
+  
+  math_df[is.na(math_df)] <- 1
+
+  result <- math_df %>%
+    dplyr::mutate(weighted_beta = beta * prop) %>%
+    dplyr::mutate(matrix_term_n = mean_n * weighted_beta,
+                  matrix_term_N = mean_N * weighted_beta) %>%
+    group_by(.data[[resolution]]) %>%
+    summarize(matrix_term_n = sum(matrix_term_n),
+              matrix_term_N = sum(matrix_term_N)) %>%
+    dplyr::mutate(sum_difference = -matrix_term_N + matrix_term_n) %>%
+    ungroup() %>%
+    dplyr::summarize(answer = sum(sum_difference))
+  
+  
+  
+
+  return(y_bar + result$answer[[1]])
+  
+}
+```
+
+```{r newgregory}
+# province prop for estimation unit
+province_proportions_new <- province_proportions %>%
+  filter(fips == 49009) %>%
+  mutate(prop = percent,
+         eco_pro_code = province) %>%
+  select(eco_pro_code, prop)
+# pixel mean
+pixel_mean <- pixel_county %>% 
+  mutate(mean = mean_forbio, 
+         variable = "forbio") %>% 
+  select(fips, variable, mean)
+# input example
+gregory(y = total_data$BALIVE_TPA, 
+        x_sample =  total_data[c("forbio", "eco_pro_code", "fips")],
+        x_pop = pixel_mean %>% filter(fips == 49009) %>% select(-fips),
+        resolution = "eco_pro_code",
+        estimation = "fips",
+        y_est_name = 49009,
+        prop = province_proportions_new)
+```
+
+```{r}
+# time experiment
+# old gregory
+start.time <- Sys.time()
+BALIVE_GREGORY_3_EST <- gregory_old(df_plots = total_data_old,
+        y_plot = BALIVE_TPA,
+        x_plot = c("forbio"),
+        df_means = pixel_means_old,
+        x_means = c("mean_forbio"),
+        df_props = province_proportions_old,
+        prop = percent,
+        estimation = fips,
+        resolution = province)
+end.time <- Sys.time()
+time.taken2 <- end.time - start.time
+
+# new gregory
+start.time <- Sys.time()
+unique(total_data$fips) %>%
+  map_dfr(.f = function(.){
+    province_proportions_new <- province_proportions %>%
+    filter(fips == .) %>%
+    mutate(prop = percent,
+           eco_pro_code = province) %>%
+    select(eco_pro_code, prop)
+    result <- gregory(y = total_data$BALIVE_TPA, 
+        x_sample =  total_data[c("forbio", "eco_pro_code", "fips")],
+        x_pop = pixel_mean %>% filter(fips == .) %>% select(-fips),
+        resolution = "eco_pro_code",
+        estimation = "fips",
+        y_est_name = .,
+        prop = province_proportions_new)
+    return(data.frame(fips = .,
+                      estimate = result))
+  })
+end.time <- Sys.time()
+time.taken1 <- end.time - start.time
+time.taken1 - time.taken2
+```
