@@ -29,6 +29,9 @@ province_proportions_new <- province_proportions %>%
   mutate(prop = percent,
          eco_pro_code = province) %>%
   select(eco_pro_code, prop)
+
+province_proportions <- province_proportions %>%
+  rename(eco_pro_code = province)
 ```
 
 ```{r pixel_means}
@@ -38,6 +41,11 @@ pixel_mean <- pixel_county %>%
   mutate(mean = mean_forbio, 
          variable = "forbio") %>% 
   select(fips, variable, mean)
+
+pixel_county_new <- pixel_county %>%
+  rename(forprob = mean_forprob,
+         nlcd11 = mean_nlcd11,
+         forbio = mean_forbio)
 ```
 
 ```{r}
@@ -54,8 +62,13 @@ pixel_pro_forbio <- iw_subsec_forbio_stats %>%
   select(eco_pro_code, variable, mean) 
 
 ```
-
 ```{r}
+province_proportions_new <- province_proportions %>%
+  filter(fips == 49009) %>%
+  mutate(prop = percent,
+         eco_pro_code = province) %>%
+  select(eco_pro_code, prop)
+
 gregory(y = total_data$BALIVE_TPA, 
         x_sample =  total_data[c("forbio", "eco_pro_code", "fips")],
         x_pop = pixel_mean %>% filter(fips == 49009) %>% select(-fips),
@@ -63,4 +76,34 @@ gregory(y = total_data$BALIVE_TPA,
         estimation = "fips",
         y_est_name = 49009,
         prop = province_proportions_new)
+```
+
+
+
+```{r, warning = F, message=F}
+
+start.time <- Sys.time()
+
+unique(total_data$fips) %>%
+  map_dfr(.f = function(.){
+    province_proportions_new <- province_proportions %>%
+    filter(fips == .) %>%
+    mutate(prop = percent,
+           eco_pro_code = province) %>%
+    select(eco_pro_code, prop)
+    
+    result <- gregory(y = total_data$BALIVE_TPA, 
+        x_sample =  total_data[c("forbio", "eco_pro_code", "fips")],
+        x_pop = pixel_mean %>% filter(fips == .) %>% select(-fips),
+        resolution = "eco_pro_code",
+        estimation = "fips",
+        y_est_name = .,
+        prop = province_proportions_new)
+    
+    return(data.frame(fips = .,
+                      estimate = result))
+  })
+time.taken1 <- end.time - start.time
+time.taken1
+
 ```
