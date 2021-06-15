@@ -571,6 +571,7 @@ x1 <- gregory_old(df_plots = total_data %>% rename(province = eco_pro_code) %>% 
 
 ```{r}
 # GREG with GREGORY
+start.time1 <- Sys.time()
 x1 <- gregory_old(df_plots = total_data %>% rename(province = eco_pro_code) %>% mutate(fips = as.numeric(fips)) %>% filter(fips != 8014),
         y_plot = BALIVE_TPA,
         x_plot = c("forbio"),
@@ -580,12 +581,17 @@ x1 <- gregory_old(df_plots = total_data %>% rename(province = eco_pro_code) %>% 
         prop = percent,
         estimation = fips,
         resolution = fips)
+end.time1 <- Sys.time()
 
 # new function
+start.time2 <- Sys.time()
 x2 <- greg_all(plot_df = total_data %>% mutate(fips = as.numeric(fips)),
          estimation = "fips",
          pixel_estimation_means = pixel_county_new,
          formula = BALIVE_TPA ~ forbio)
+end.time2 <- Sys.time()
+
+(end.time2 - start.time2) - (end.time1 - start.time1)
 ```
 
 Commentary: After getting all 3 versions to work, I will now move into timing and comparing the timing. 
