@@ -34,7 +34,7 @@ province_proportions_old <- province_proportions %>%
 
 # pixels
 # pixel_county_forprob <- read.csv(here("totally legal data", "Pixels", "iw_cnty_forprob_250m_stats.csv"))
-# pixel_county_forbio <- read.csv(here("totally legal data", "Pixels", "iw_cnty_forbio_250m_stats.csv")) 
+# pixel_county_forbio <- read.csv(here("totally legal data", "Pixels", "iw_cnty_forbio_250m_stats.csv"))
 # pixel_county_forcover <- read.csv(here("totally legal data", "Pixels", "iw_cnty_tcc2016_30m_stats.csv"))
 
 # pixel_county_forprob <- iw_cnty_forprob_250m_stats

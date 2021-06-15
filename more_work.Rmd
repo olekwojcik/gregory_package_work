@@ -391,6 +391,44 @@ gregory_all(plot_df = total_data %>% mutate(fips = as.numeric(fips)),
             formula = BALIVE_TPA ~ forbio,
             prop = "percent")
 ```
+# Sam Testing (Ensure it runs)
+
+```{r}
+pixel_mean <- pixel_county %>% 
+  mutate(forbio = mean_forbio)%>%
+  select(fips, forbio)
+province_proportions_new <- province_proportions %>%
+  mutate(eco_pro_code = province) %>%
+  select(-province)
+gregory_all(plot_df = total_data %>% mutate(fips = as.numeric(fips)),
+            resolution = "eco_pro_code",
+            estimation = "fips",
+            pixel_estimation_means = pixel_mean,
+            proportions = province_proportions_new,
+            formula = BALIVE_TPA ~ forbio,
+            prop = "percent")
+# Error: Column `eco_pro_code` not found in `.data`
+# Solution: Rename province to 'eco_pro_code' in province_proportions
+
+# Error: Can't subset columns that don't exist. x Column `forbio` doesn't exist.
+# Solution: Rename mean to forbio in pixel_mean, rename column for variable name
+
+# Potential Issue: for Daggett (49009), estimate is
+# 49009	85.632791292	
+# Expect ~60
+# Note: Could be from using inappropriate data source (means or proportions)
+
+# From Older GREGORY function (this summer) 
+# 85.63279
+
+# From Oldest GREGORY function (last summer)
+# 60.92363
+```
+
+Commentary: After getting all 3 versions to work, I will now move into timing and comparing the timing. 
+
+However, we should note that our newer functions still do not agree on the estimates values, as noted in the commented-out chunk above
+
 
 
 

@@ -18,7 +18,7 @@ gregory(y = dat_s$Tree_Height,
         prop = dat_prop %>% filter(Family == "Pinaceae") %>% select(-Family))
 ```
 
-```{r pixel province, eval = FALSE}
+```{r pixel province}
 # Initial Wrangle
 # need province_proportions
 # province_proportions <- read_csv("~/math343_s20_forests/totally legal data/province_proportions.csv")

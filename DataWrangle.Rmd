@@ -1,0 +1,51 @@
+---
+title: "DataWrangle"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(here)
+```
+
+```{r}
+total_data <- plot_response %>%
+  mutate(COUNTYCD = str_pad(COUNTYCD, side = "left",
+                            width = 3, pad = 0)) %>%
+  mutate(STATECD = as.character(STATECD)) %>%
+  unite(fips, c(STATECD, COUNTYCD),
+        sep = "") %>%
+  mutate(dips = as.numeric(fips)) %>%
+  select(PLT_CN, INVYR, fips,
+         BALIVE_TPA, CNTLIVE_TPA, BIOLIVE_TPA,
+         VOLNLIVE_TPA, LIVE_CANOPY_CVR_PCT, CONDID,
+         CONDPROP_UNADJ, NBRCNDFTYP, #new_FORTYPCD, 
+         #nlcd11, forprob, FIAstrat, forbio, forgrp, eco_pro_code, eco_sec_code,
+         ELEV_PUBLIC, ECOSUBCD, LAT_PUBLIC, LON_PUBLIC
+         )
+total_spatial <- plt_spatial %>%
+  select(PLT_CN, nlcd11, forprob, FIAstrat, forbio, forgrp)
+total_data <- left_join(total_data, total_spatial, by = "PLT_CN")
+```
+
+```{r}
+eco_province <- function(data){
+  if(str_length(total_data$ECOSUBCD[i]) == 5) {
+    eco_value <- substr(total_data$ECOSUBCD[i], 1, 3)
+    return(eco_value)
+  }
+  if(str_length(total_data$ECOSUBCD[i]) == 6) {
+    eco_value <- substr(total_data$ECOSUBCD[i], 1, 4)
+    return(eco_value)
+  }
+  if(str_length(total_data$ECOSUBCD[i]) == 7) {
+    eco_value <- substr(total_data$ECOSUBCD[i], 1, 4)
+    return(eco_value)
+  }
+  else{ eco_value <- NA }
+  eco_value
+}
+eco_pro_code <- rep(NA, length(total_data$ECOSUBCD))
+for(i in 1:length(total_data$ECOSUBCD)) { eco_pro_code[i] <- eco_province(total_data$ECOSUBCD[i])}
+total_data <- cbind(total_data, eco_pro_code)
+```
