@@ -429,7 +429,40 @@ Commentary: After getting all 3 versions to work, I will now move into timing an
 
 However, we should note that our newer functions still do not agree on the estimates values, as noted in the commented-out chunk above
 
+```{r}
+# Time Experiment
 
+# OLD GREGORY
+start.time1 <- Sys.time()
+invisible(rep(gregory_old(df_plots = total_data_old,
+         y_plot = BALIVE_TPA,
+         x_plot = c("forbio"),
+         df_means = pixel_means_old,
+         x_means = c("mean_forbio"),
+         df_props = province_proportions_old,
+         prop = percent,
+         estimation = fips,
+         resolution = province), 100))
+
+end.time1 <- Sys.time()
+time.taken1 <- end.time1 - start.time1
+# GREGORY ALL
+start.time2 <- Sys.time()
+invisible(rep(gregory_all(plot_df = total_data %>% mutate(fips = as.numeric(fips)),
+            resolution = "eco_pro_code",
+            estimation = "fips",
+            pixel_estimation_means = pixel_mean,
+            proportions = province_proportions_new,
+            formula = BALIVE_TPA ~ forbio,
+            prop = "percent"), 100))
+
+end.time2 <- Sys.time()
+time.taken2 <- end.time2 - start.time2
+
+# Positive means new function faster
+# Negative means old function faster
+time.taken2 - time.taken1
+```
 
 
 
