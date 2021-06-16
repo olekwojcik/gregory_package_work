@@ -245,11 +245,6 @@ Gregory all function
 
 
 ```{r}
-
-get_beta <- function(plot_df){
-  
-}
-
 gregory_all <- function(
   plot_df, #all plot data (totaldata)
   resolution, #character, name of resolution in dfs
@@ -259,6 +254,94 @@ gregory_all <- function(
   formula, #formula for model
   prop #character, name of percent
 ){
+  
+  options(tidyverse.quiet = TRUE)
+  
+  #error messages
+  #first, check classes
+  
+  if(!is.data.frame(plot_df)) {
+    stop("plot_df needs a data.frame object. 
+         You have provided a ", class(plot_df), " object.")
+  }
+  
+  if(!is.character(resolution)) {
+    stop("resolution needs a character object. 
+         You have provided a ", class(resolution), " object.")
+  }
+  
+  if(!is.character(estimation)) {
+    stop("estimation needs a character object. 
+         You have provided a ", class(estimation), " object.")
+  }
+  
+  if(!is.data.frame(pixel_estimation_means)) {
+    stop("pixel_estimation_means needs a data.frame object. 
+         You have provided a ", class(pixel_estimation_means), " object.")
+  }
+  
+  if(!is.data.frame(proportions)) {
+    stop("proportions needs a data.frame object. 
+         You have provided a ", class(proportions), " object.")
+  }
+  
+  if(class(y ~ x) != class(formula)) {
+    stop("formula needs a formula object. 
+         You have provided a ", class(formula), " object.")
+  }
+  
+  if(!is.character(prop)) {
+    stop("prop needs a character object. 
+         You have provided a ", class(prop), " object.")
+  }
+  
+  #others
+  
+  if(resolution == estimation) {
+    stop("resolution and estimation should be different. Do you mean to use GREG?")
+  }
+  
+  #plot_df errors
+  #make sure it has stuff
+  
+  if(!(resolution %in% names(plot_df))) {
+    stop("resolution must be a column within plot_df.")
+  }
+  
+  if(!(estimation %in% names(plot_df))) {
+    stop("estimation must be a column within plot_df.")
+  }
+  
+  #pixel_estimation_means errors
+  #make sure it has stuff
+  
+  if(!(estimation %in% names(pixel_estimation_means))) {
+    stop("estimation must be a column within pixel_estimation_means.")
+  }
+  
+  #proportions errors
+  
+  if(!(resolution %in% names(proportions))) {
+    stop("resolution must be a column within proportions.")
+  }
+  
+  if(!(estimation %in% names(proportions))) {
+    stop("estimation must be a column within proportions.")
+  }
+  
+  if(!(prop %in% names(proportions))) {
+    stop("prop must be a column within proportions.")
+  }
+  
+  #NA errors
+  
+
+  
+  
+  
+  
+  
+  
   
   
   #i want to get betas for every province
@@ -334,7 +417,7 @@ gregory_all <- function(
   
   n_df <- plot_df %>%
     dplyr::group_by(.data[[estimation]]) %>%
-    dplyr::summarize(across(predictors, mean)) %>%
+    dplyr::summarize(across(predictors, mean), .groups = 'drop') %>%
     tidyr::pivot_longer(!.data[[estimation]],
                         names_to = "variable",
                         values_to = "mean_n")
@@ -356,7 +439,7 @@ gregory_all <- function(
            term_N = weighted_beta * mean_N) %>%
     group_by(.data[[estimation]]) %>%
     summarize(term_n = sum(term_n),
-              term_N = sum(term_N)) %>%
+              term_N = sum(term_N), .groups = 'drop') %>%
     mutate(term = term_N - term_n) %>%
     select(fips, term)
   
@@ -369,7 +452,7 @@ gregory_all <- function(
   
   y_bar_df <- plot_df %>%
     dplyr::group_by(.data[[estimation]]) %>%
-    summarize(y_bar = mean(.data[[y]]))
+    summarize(y_bar = mean(.data[[y]]), .groups = 'drop')
   
   #join with the rest and get the final result
   
