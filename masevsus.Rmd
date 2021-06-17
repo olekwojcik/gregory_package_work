@@ -1,0 +1,189 @@
+---
+title: "Mase vs. GREG (homemade)"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(mase)
+library(readr)
+```
+
+Load Data
+
+```{r}
+pixel_county <- read.csv("pixel_county.csv")
+
+# auxillary variables pixel level
+# pixel_county <- read_csv("~/math343_s20_forests/totally legal data/pixel_county.csv")
+pixel_mean <- pixel_county %>% 
+  mutate(mean = mean_forbio, 
+         variable = "forbio") %>% 
+  select(fips, variable, mean)
+
+pixel_county_new <- pixel_county %>%
+  rename(forprob = mean_forprob,
+         nlcd11 = mean_nlcd11,
+         forbio = mean_forbio)
+```
+
+Load Functions
+
+GREG
+
+```{r}
+greg_all <- function(plot_df,
+                     estimation,
+                     pixel_estimation_means,
+                     formula
+){
+  #i want to get betas for every county
+  #so first make a list of the counties
+  
+  counties <- plot_df %>%
+    dplyr::select(.data[[estimation]]) %>%
+    dplyr::pull() %>%
+    unique()
+  
+  #get betas for each county
+  
+  
+  betas <- counties %>%
+      purrr::map_dfr(.f = function(.){
+        
+        #this is to avoid weird bug
+        period_two <- .
+        
+        x_sample_filtered <- plot_df %>%
+          dplyr::filter(.data[[estimation]] == period_two)
+
+        
+        model <- lm(formula,
+                    data = x_sample_filtered)
+        
+
+        
+        result <- data.frame(estimation = .,
+                             variable = names(model$coefficients),
+                             beta = unname(model$coefficients))
+        
+        names(result)[[1]] <- estimation
+        
+        return(result)
+        
+      })
+
+  
+  #now let's get those predictors
+  
+  predictors <- betas  %>%
+    dplyr::select(variable) %>%
+    dplyr::pull() %>%
+    unique()
+  
+  predictors <- predictors[!predictors %in% "(Intercept)"]
+  
+    #now lets pivot the n means(maybe ask for this as input?)
+  
+  
+  N_df <- dplyr::select(pixel_estimation_means,
+                           c(estimation, predictors))
+  
+  N_df <- tidyr::pivot_longer(N_df, !.data[[estimation]],
+                                 names_to = "variable",
+                                 values_to = "mean_N")
+  
+  #now combine with betas
+  
+  term_df <- left_join(betas, N_df, by = c(estimation, "variable"))
+  
+  #now let's get the N means
+  
+  n_df <- plot_df %>%
+    dplyr::group_by(.data[[estimation]]) %>%
+    dplyr::summarize(across(predictors, mean)) %>%
+    tidyr::pivot_longer(!.data[[estimation]],
+                        names_to = "variable",
+                        values_to = "mean_n")
+  
+  #then join N to the term_df
+  
+  term_df <- left_join(term_df, n_df, by = c(estimation, "variable"))
+  
+  
+  
+  #replace na's from join (intercept) with 1's
+  
+  term_df$mean_n[is.na(term_df$mean_n)] <- 1
+  term_df$mean_N[is.na(term_df$mean_N)] <- 1
+  
+  
+  term_df <- term_df %>%
+    mutate(term_n = beta * mean_n,
+           term_N = beta * mean_N) %>%
+    group_by(.data[[estimation]]) %>%
+    summarize(term_n = sum(term_n),
+              term_N = sum(term_N)) %>%
+    mutate(term = term_N - term_n) %>%
+    select(fips, term)
+  
+  #get Y var
+  
+  y <- all.vars(formula)[1]
+
+  
+  #get y_bars
+  
+  y_bar_df <- plot_df %>%
+    dplyr::group_by(.data[[estimation]]) %>%
+    summarize(y_bar = mean(.data[[y]]))
+  
+  #join with the rest and get the final result
+  
+  result <- left_join(term_df, y_bar_df, by = estimation) %>%
+    dplyr::mutate(estimate = y_bar + term) %>%
+    dplyr::select(.data[[estimation]], estimate)
+  
+  return(result)
+}
+```
+
+Run Function
+
+```{r}
+greg_all_data <- greg_all(plot_df = total_data %>% mutate(fips = as.numeric(fips)) %>% drop_na(),
+         estimation = "fips",
+         pixel_estimation_means = pixel_county_new,
+         formula = BALIVE_TPA ~ forbio + forprob)
+```
+
+MASE
+
+```{r}
+sum(pixel_county_new$npixels.x)
+```
+
+Create pixel means
+```{r}
+pixel_count_49009 <- pixel_county_new %>%
+  filter(fips == 49009) %>%
+  select(npixels.x)
+
+pixel_count_49009[[1]]
+
+pixel_county_new_49009 <- pixel_county_new %>%
+  filter(fips == 49009) %>%
+  select(forbio, forprob)
+
+total_data_49009 <- total_data %>%
+  filter(fips == 49009) %>%
+  drop_na()
+```
+
+```{r}
+greg(y = total_data_49009$BALIVE_TPA, x_sample = as.data.frame(total_data_49009[c("forbio", "forprob")]),
+            x_pop = pixel_county_new_49009, var_est = FALSE,
+            data_type = "means", N = 29874)
+```
+
+It works!!!!
