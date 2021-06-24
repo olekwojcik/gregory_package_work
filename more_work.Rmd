@@ -89,160 +89,6 @@ $$\bar{y} + \sum_{l \in p} w_l(\pmb{\bar{x}}^T_N\pmb{\beta}_l - \pmb{\bar{x}}^T_
 
 
 
-```{r, warning = F, message=F}
-gregory <- function(y, #vector of response variable (BALIVE)
-                    x_sample, #sample "plot" data, total_data, without y, with res and est
-                    x_pop, #means, columns are estimation, "variable" and "mean"
-                    resolution, #character, column name of resolution unit in dfs
-                    estimation, # character, column name of estimation unit in dfs
-                    y_est_name, #character of what "county" we want to estimate,
-                    prop, # dataframe, columns: resolution, estimation, and "prop"
-                    formula = FALSE # optional, specify formula or leave F for everything
-){
-  options(warn = -1)
-  #first attatch y to x_sample for easy wrangling
-  
-  
-  neo_x_sample <- x_sample %>%
-    dplyr::mutate(y_variable = y)
-  
-
-  
-  #find y bar by filtering to estimation unit of interest
-  
-  y_bar_df <- neo_x_sample %>%
-    dplyr::filter(.data[[estimation]] == y_est_name) %>%
-    summarize(mean = mean(y_variable))
-  
-  y_bar <- y_bar_df$mean[[1]]
-  
-  #use proportions to filter out only RUs that we care about
-  
-  res_units_df <- prop %>%
-    select(-prop)
-  
-  res_units <- dplyr::pull(res_units_df)
-  
-  
-  neo_x_pop <- x_pop 
-  
-  #now we can make the betas off of neo_x_sample
-  
-  if(formula == FALSE){
-    #if formula is not provided
-    predictors <-  unique(dplyr::pull(neo_x_pop, variable))
-    
-    
-
-    
-     betas <- res_units %>%
-      purrr::map_dfr(.f = function(.){
-        
-        #this is to avoid weird bug
-        period_two <- .
-        
-        x_sample_filtered <- neo_x_sample %>%
-          dplyr::filter(.data[[resolution]] == period_two)
-
-        
-        model <- lm(as.formula(c(paste("y_variable", "~"),
-                        paste(predictors, collapse = " + "))),
-           data = x_sample_filtered)
-        
-
-        
-        result <- data.frame(resolution = .,
-                             variable = names(model$coefficients),
-                             beta = unname(model$coefficients))
-        
-        names(result)[[1]] <- resolution
-        
-        return(result)
-        
-      })
-  }
-  
-
-  
-  if(formula != FALSE){
-    #if formula is provided
-     betas <- res_units %>%
-      purrr::map_dfr(.f = function(.){
-        
-        #this is to avoid weird bug
-        period_two <- .
-        
-        x_sample_filtered <- x_sample %>%
-          dplyr::filter(.data[[resolution]] == period_two)
-        
-        model <- lm(formula,
-           data = neo_x_sample)
-        
-        result <- data.frame(resolution = .,
-                             variable = names(model$coefficients),
-                             beta = unname(model$coefficients))
-        
-        names(result)[[1]] <- resolution
-        
-        return(result)
-        
-      })
-  }
-  
-
-  #join x bar little n
-  math_df <- dplyr::left_join(betas, x_pop, by = "variable") %>%
-    dplyr::rename(mean_n = mean)
-  
-  #join x bar big n
-    tidy_x_sample <- x_sample %>%
-    tidyr::pivot_longer(!c(.data[[resolution]], .data[[estimation]]),
-                 names_to = "variable",
-                 values_to = "value") %>%
-      dplyr::filter(.data[[estimation]] == y_est_name) %>%
-      group_by(variable) %>%
-      summarize(mean_N = mean(value))
-    
-  math_df <- dplyr::left_join(math_df, tidy_x_sample, by = "variable") %>%
-    left_join(prop, by = resolution)
-  
-  
-  math_df[is.na(math_df)] <- 1
-
-  result <- math_df %>%
-    dplyr::mutate(weighted_beta = beta * prop) %>%
-    dplyr::mutate(matrix_term_n = mean_n * weighted_beta,
-                  matrix_term_N = mean_N * weighted_beta) %>%
-    group_by(.data[[resolution]]) %>%
-    summarize(matrix_term_n = sum(matrix_term_n),
-              matrix_term_N = sum(matrix_term_N)) %>%
-    dplyr::mutate(sum_difference = -matrix_term_N + matrix_term_n) %>%
-    ungroup() %>%
-    dplyr::summarize(answer = sum(sum_difference))
-  
-  
-  
-
-  return(y_bar + result$answer[[1]])
-  
-}
-
-gregory(y = dat_s$Tree_Height,
-        x_sample = dat_s[c("Crown_Width_NS", "DBH", "Condition", "Family")],
-        x_pop = dat_x_bar %>% filter(Family == "Pinaceae") %>% select(-Family),
-        resolution = "Condition",
-        estimation = "Family",
-        y_est_name = "Pinaceae",
-        prop = dat_prop %>% filter(Family == "Pinaceae") %>% select(-Family)) 
-
-#hello
-```
-
-
-
-
-Gregory all function
-
 
 ```{r}
 gregory_all <- function(
@@ -254,8 +100,6 @@ gregory_all <- function(
   formula, #formula for model
   prop #character, name of percent
 ){
-  
-  options(tidyverse.quiet = TRUE)
   
   #error messages
   #first, check classes
@@ -335,14 +179,17 @@ gregory_all <- function(
   
   #NA errors
   
-
+  if(any(is.na(plot_df))) {
+    stop("plot_df has NA values")
+  }
   
+  if(any(is.na(pixel_estimation_means))) {
+    stop("pixel_estimation_means has NA values")
+  }
   
-  
-  
-  
-  
-  
+  if(any(is.na(proportions))) {
+    stop("proportions has NA values")
+  }
   
   #i want to get betas for every province
   #so first make a list of the provinces
@@ -367,11 +214,11 @@ gregory_all <- function(
         model <- lm(formula,
                     data = x_sample_filtered)
         
-
-        
         result <- data.frame(resolution = .,
                              variable = names(model$coefficients),
                              beta = unname(model$coefficients))
+        
+        result[is.na(result)] <- 0
         
         names(result)[[1]] <- resolution
         
@@ -387,7 +234,6 @@ gregory_all <- function(
     unique()
   
   predictors <- predictors[!predictors %in% "(Intercept)"]
-  
   
   #now let's get the weighted betas
   
@@ -426,13 +272,10 @@ gregory_all <- function(
   
   term_df <- left_join(term_df, n_df, by = c(estimation, "variable"))
   
-  
-  
   #replace na's from join (intercept) with 1's
   
   term_df$mean_n[is.na(term_df$mean_n)] <- 1
   term_df$mean_N[is.na(term_df$mean_N)] <- 1
-  
   
   term_df <- term_df %>%
     mutate(term_n = weighted_beta * mean_n,
@@ -446,7 +289,6 @@ gregory_all <- function(
   #get Y var
   
   y <- all.vars(formula)[1]
-
   
   #get y_bars
   
@@ -462,22 +304,8 @@ gregory_all <- function(
   
   return(result)
   
-  
-  
 }
-
-gregory_all(plot_df = total_data %>% mutate(fips = as.numeric(fips)),
-            resolution = "eco_pro_code",
-            estimation = "fips",
-            pixel_estimation_means = pixel_county_new,
-            proportions = province_proportions,
-            formula = BALIVE_TPA ~ forbio,
-            prop = "percent")
-
-
-
 ```
-
 
 
 
@@ -487,6 +315,59 @@ greg_all <- function(plot_df,
                      pixel_estimation_means,
                      formula
 ){
+  
+  #error messages
+  #first, check classes
+  
+  if(!is.data.frame(plot_df)) {
+    stop("plot_df needs a data.frame object. 
+         You have provided a ", class(plot_df), " object.")
+  }
+  
+  
+  if(!is.character(estimation)) {
+    stop("estimation needs a character object. 
+         You have provided a ", class(estimation), " object.")
+  }
+  
+  if(!is.data.frame(pixel_estimation_means)) {
+    stop("pixel_estimation_means needs a data.frame object. 
+         You have provided a ", class(pixel_estimation_means), " object.")
+  }
+  
+  if(class(y ~ x) != class(formula)) {
+    stop("formula needs a formula object. 
+         You have provided a ", class(formula), " object.")
+  }
+  
+  #others
+  
+  #plot_df errors
+  #make sure it has stuff
+  
+  if(!(estimation %in% names(plot_df))) {
+    stop("estimation must be a column within plot_df.")
+  }
+  
+  #pixel_estimation_means errors
+  #make sure it has stuff
+  
+  if(!(estimation %in% names(pixel_estimation_means))) {
+    stop("estimation must be a column within pixel_estimation_means.")
+  }
+  
+  #proportions errors
+  
+  #NA errors
+  
+  if(any(is.na(plot_df))) {
+    stop("plot_df has NA values")
+  }
+  
+  if(any(is.na(pixel_estimation_means))) {
+    stop("pixel_estimation_means has NA values")
+  }
+  
   #i want to get betas for every county
   #so first make a list of the counties
   
@@ -496,7 +377,6 @@ greg_all <- function(plot_df,
     unique()
   
   #get betas for each county
-  
   
   betas <- counties %>%
       purrr::map_dfr(.f = function(.){
@@ -511,18 +391,17 @@ greg_all <- function(plot_df,
         model <- lm(formula,
                     data = x_sample_filtered)
         
-
-        
         result <- data.frame(estimation = .,
                              variable = names(model$coefficients),
                              beta = unname(model$coefficients))
+        
+        result[is.na(result)] <- 0
         
         names(result)[[1]] <- estimation
         
         return(result)
         
       })
-
   
   #now let's get those predictors
   
@@ -534,7 +413,6 @@ greg_all <- function(plot_df,
   predictors <- predictors[!predictors %in% "(Intercept)"]
   
     #now lets pivot the n means(maybe ask for this as input?)
-  
   
   N_df <- dplyr::select(pixel_estimation_means,
                            c(estimation, predictors))
@@ -551,7 +429,7 @@ greg_all <- function(plot_df,
   
   n_df <- plot_df %>%
     dplyr::group_by(.data[[estimation]]) %>%
-    dplyr::summarize(across(predictors, mean)) %>%
+    dplyr::summarize(across(predictors, mean), .groups = 'drop') %>%
     tidyr::pivot_longer(!.data[[estimation]],
                         names_to = "variable",
                         values_to = "mean_n")
@@ -560,20 +438,17 @@ greg_all <- function(plot_df,
   
   term_df <- left_join(term_df, n_df, by = c(estimation, "variable"))
   
-  
-  
   #replace na's from join (intercept) with 1's
   
   term_df$mean_n[is.na(term_df$mean_n)] <- 1
   term_df$mean_N[is.na(term_df$mean_N)] <- 1
-  
   
   term_df <- term_df %>%
     mutate(term_n = beta * mean_n,
            term_N = beta * mean_N) %>%
     group_by(.data[[estimation]]) %>%
     summarize(term_n = sum(term_n),
-              term_N = sum(term_N)) %>%
+              term_N = sum(term_N), .groups = 'drop') %>%
     mutate(term = term_N - term_n) %>%
     select(fips, term)
   
@@ -581,12 +456,11 @@ greg_all <- function(plot_df,
   
   y <- all.vars(formula)[1]
 
-  
   #get y_bars
   
   y_bar_df <- plot_df %>%
     dplyr::group_by(.data[[estimation]]) %>%
-    summarize(y_bar = mean(.data[[y]]))
+    summarize(y_bar = mean(.data[[y]]), .groups = 'drop')
   
   #join with the rest and get the final result
   
@@ -596,45 +470,6 @@ greg_all <- function(plot_df,
   
   return(result)
 }
-
-greg_all(plot_df = total_data %>% mutate(fips = as.numeric(fips)),
-         estimation = "fips",
-         pixel_estimation_means = pixel_county_new,
-         formula = BALIVE_TPA ~ forbio)
-```
-
-# Sam Testing (Ensure it runs)
-
-```{r}
-pixel_mean <- pixel_county %>% 
-  mutate(forbio = mean_forbio)%>%
-  select(fips, forbio)
-province_proportions_new <- province_proportions %>%
-  mutate(eco_pro_code = province) %>%
-  select(-province)
-gregory_all(plot_df = total_data %>% mutate(fips = as.numeric(fips)),
-            resolution = "eco_pro_code",
-            estimation = "fips",
-            pixel_estimation_means = pixel_mean,
-            proportions = province_proportions_new,
-            formula = BALIVE_TPA ~ forbio,
-            prop = "percent")
-# Error: Column `eco_pro_code` not found in `.data`
-# Solution: Rename province to 'eco_pro_code' in province_proportions
-
-# Error: Can't subset columns that don't exist. x Column `forbio` doesn't exist.
-# Solution: Rename mean to forbio in pixel_mean, rename column for variable name
-
-# Potential Issue: for Daggett (49009), estimate is
-# 49009	85.632791292	
-# Expect ~60
-# Note: Could be from using inappropriate data source (means or proportions)
-
-# From Older GREGORY function (this summer) 
-# 85.63279
-
-# From Oldest GREGORY function (last summer)
-# 60.92363
 ```
 
 ```{r old}
@@ -700,11 +535,11 @@ end.time1 <- Sys.time()
 time.taken1 <- end.time1 - start.time1
 # GREGORY ALL
 start.time2 <- Sys.time()
-invisible(rep(gregory_all(plot_df = total_data %>% mutate(fips = as.numeric(fips)),
+invisible(rep(gregory_all(plot_df = total_data%>% mutate(fips = as.double(fips)),
             resolution = "eco_pro_code",
             estimation = "fips",
-            pixel_estimation_means = pixel_mean,
-            proportions = province_proportions_new,
+            pixel_estimation_means = pixel_county_new,
+            proportions = province_proportions,
             formula = BALIVE_TPA ~ forbio,
             prop = "percent"), 100))
 
