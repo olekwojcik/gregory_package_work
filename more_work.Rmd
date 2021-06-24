@@ -557,7 +557,26 @@ $$\pmb{\beta}^*_l = \pmb{\beta}_l  w_l$$
 
 $$\bar{y} + \sum_{l \in p} (\pmb{\bar{x}}^T_N\pmb{\beta}^*_l - \pmb{\bar{x}}^T_n\pmb{\beta}^*_l)$$
 
+```{r}
+library(dplyr)
+library(tidyr)
+total_data_2 <- total_data %>% drop_na()
+names(province_proportions)[names(province_proportions) == "province"] <- "eco_pro_code"
+names(pixel_county)[names(pixel_county) == "mean_forbio"] <- "forbio"
+```
 
+
+
+
+```{r}
+gregory_all(plot_df = total_data2 %>% mutate(fips = as.numeric(fips)),
+            resolution = "eco_pro_code",
+            estimation = "fips",
+            pixel_estimation_means = pixel_mean,
+            proportions = province_proportions,
+            formula = BALIVE_TPA ~ forbio,
+            prop = "percent")
+```
 
 
 
