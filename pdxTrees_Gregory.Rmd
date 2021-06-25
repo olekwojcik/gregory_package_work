@@ -31,8 +31,8 @@ dat_s <- dat %>%
   sample_n(1000) %>%
   as.data.frame()
 
-dat <- dat %>%
-  select(-Tree_Height)
+# dat <- dat %>%
+#   select(-Tree_Height)
 
 dat_est <- dat %>%
   filter(Family == "Pinaceae")
@@ -81,7 +81,7 @@ Run gregory_all
 
 ```{r}
 library(gregRy)
-gregory_all(plot_df = dat_s %>% drop_na(),
+gregory_all(plot_df = dat %>% drop_na(),
             resolution = "Condition",
             estimation = "Family",
             pixel_estimation_means = dat_x_bar_new,
